@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0d0b14">
+  <meta name="robots" content="noindex">
+  <title>Lecteurs — Rusty James News</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;0,700;1,500&family=Montserrat:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-head">
+    <div class="wrap head-in">
+      <div class="brand">
+        <span class="brand-name">Rusty James News</span>
+        <span class="brand-sub">Lecteurs</span>
+      </div>
+      <p class="online" aria-live="polite"><i class="live-dot" aria-hidden="true"></i><b id="onlineCount">–</b> <span id="onlineLabel">en ligne</span></p>
+    </div>
+  </header>
+
+  <main class="wrap readers">
+    <section class="intro" aria-labelledby="titre">
+      <p class="readers-kicker">Observatoire</p>
+      <h1 id="titre">D’où nous lit-on&nbsp;?</h1>
+      <p class="readers-lede">Un point par ville, placé sur la Terre plate : le pôle Nord au centre, l’équateur à mi-chemin du bord. Position estimée à partir de l’adresse IP, sans GPS.</p>
+    </section>
+
+    <div class="layout">
+      <aside class="side">
+        <form class="gate" id="gate" autocomplete="off">
+          <label for="adminToken" class="readers-label">Accès administrateur</label>
+          <p class="gate-note">Saisissez le jeton défini dans <code>ADMIN_TOKEN</code> pour afficher les visites.</p>
+          <div class="gate-row">
+            <input id="adminToken" type="password" placeholder="Jeton" required>
+            <button type="submit" class="btn">Déverrouiller</button>
+          </div>
+          <p id="authMessage" class="gate-msg" role="status"></p>
+        </form>
+
+        <div class="figures" id="figures" hidden>
+          <div class="readers-count">
+            <p class="readers-label">Visites</p>
+            <p class="readers-total" id="totalCount">–</p>
+            <p class="readers-where" id="totalWhere"></p>
+          </div>
+          <div class="periods" role="group" aria-label="Période">
+            <button type="button" data-range="24h" aria-pressed="true">24 h</button>
+            <button type="button" data-range="7j" aria-pressed="false">7 j</button>
+            <button type="button" data-range="30j" aria-pressed="false">30 j</button>
+            <button type="button" data-range="tout" aria-pressed="false">Tout</button>
+          </div>
+          <div>
+            <p class="readers-label">Pays</p>
+            <ol class="rank" id="rank"></ol>
+          </div>
+          <div>
+            <p class="readers-label">Sources</p>
+            <ol class="rank rank-plain" id="sources"></ol>
+          </div>
+          <div>
+            <p class="readers-label">Appareils</p>
+            <ol class="rank rank-plain" id="devices"></ol>
+          </div>
+          <button type="button" class="btn-ghost" id="lock">Verrouiller</button>
+        </div>
+      </aside>
+
+      <section class="map-col" aria-label="Carte des lecteurs">
+        <div id="map"></div>
+        <p class="map-hint" id="mapHint">Touchez un point pour voir la ville et le nombre de visites.</p>
+      </section>
+    </div>
+
+    <section class="recent" id="recentWrap" hidden aria-labelledby="recentTitle">
+      <h2 id="recentTitle"><span class="sq" aria-hidden="true"></span>Dernières visites</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Heure</th><th scope="col">Lieu</th><th scope="col">Page</th><th scope="col">Appareil</th><th scope="col">Source</th><th scope="col">Lecteur</th></tr></thead>
+          <tbody id="recentRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="colophon">Actualisation toutes les 10 secondes · <a href="/api/health" target="_blank" rel="noreferrer">État du service</a></p>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
