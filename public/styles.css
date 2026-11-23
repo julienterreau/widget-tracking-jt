@@ -63,6 +63,8 @@ code{font-size:.8em;padding:.05rem .3rem;border:1px solid var(--line);color:var(
 .readers-count{padding:.85rem 1rem;border:1px solid var(--line)}
 .readers-total{margin:.35rem 0 .4rem;font:700 clamp(2.4rem,4vw,3.25rem)/1 var(--serif);letter-spacing:-.02em;color:var(--paper)}
 .readers-where{font-size:.84rem;color:var(--muted)}
+.site-filter{display:flex;flex-direction:column;gap:.4rem}
+.site-filter select{background:var(--ink);color:var(--paper);border:1px solid var(--line);padding:.55rem .65rem;font:inherit;font-size:.8rem}
 .periods{display:flex;border:1px solid var(--line)}
 .periods button{flex:1;padding:.55rem 0;font-size:.75rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:var(--wire);transition:color .2s}
 .periods button+button{border-left:1px solid var(--line)}

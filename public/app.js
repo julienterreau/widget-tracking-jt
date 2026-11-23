@@ -7,7 +7,7 @@
   const $ = (id) => document.getElementById(id);
   const nf = new Intl.NumberFormat("fr-FR");
 
-  const st = { token: "", range: "24h", data: null, selected: null, wide: false, timer: null, sig: "" };
+  const st = { token: "", range: "24h", site: "", data: null, selected: null, wide: false, timer: null, sig: "" };
   try { st.token = sessionStorage.getItem(TOKEN_KEY) || ""; } catch {}
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -176,7 +176,9 @@
   async function refresh() {
     if (!st.token) return;
     try {
-      const r = await fetch(`/api/admin/summary?range=${st.range}`, { headers: { "x-admin-token": st.token }, cache: "no-store" });
+      const q = new URLSearchParams({ range: st.range });
+      if (st.site) q.set("site", st.site);
+      const r = await fetch(`/api/admin/summary?${q}`, { headers: { "x-admin-token": st.token }, cache: "no-store" });
       if (r.status === 401 || r.status === 503) {
         try { sessionStorage.removeItem(TOKEN_KEY); } catch {}
         st.token = ""; setLocked(true, "Jeton invalide ou serveur non configuré."); return;
@@ -184,6 +186,7 @@
       if (!r.ok) throw new Error();
       const d = await r.json();
       setLocked(false);
+      fillSites(d.sites, d.site);
       $("onlineCount").textContent = nf.format(d.online);
       $("onlineLabel").textContent = d.online > 1 ? "lecteurs en ligne" : "lecteur en ligne";
       $("totalCount").textContent = nf.format(d.matched);
@@ -214,6 +217,18 @@
   $("lock").addEventListener("click", () => {
     try { sessionStorage.removeItem(TOKEN_KEY); } catch {}
     st.token = ""; $("adminToken").value = ""; setLocked(true);
+  });
+  function fillSites(sites, current) {
+    const sel = $("siteFilter");
+    if (!sel || !Array.isArray(sites)) return;
+    const html = `<option value="">Tous les sites</option>` + sites.map((s) => `<option value="${esc(s.site)}">${esc(s.site)} (${nf.format(s.count)})</option>`).join("");
+    if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
+    sel.value = current || st.site || "";
+  }
+  $("siteFilter").addEventListener("change", () => {
+    st.site = $("siteFilter").value;
+    st.sig = "";
+    refresh();
   });
   document.querySelectorAll(".periods button").forEach((b) => b.addEventListener("click", () => {
     st.range = b.dataset.range;

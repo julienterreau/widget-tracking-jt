@@ -131,9 +131,9 @@
   </style>
   <button class="fab" id="fab" type="button" aria-expanded="false" aria-controls="panel"><i aria-hidden="true"></i><span id="fabTxt">Lecteurs</span></button>
   <section class="panel" id="panel" role="dialog" aria-label="Lecteurs du site">
-    <header><div><b>Lecteurs</b><small>Pays, villes et lecteurs</small></div><button class="x" id="close" type="button" aria-label="Fermer">×</button></header>
+    <header><div><b>Lecteurs</b><small id="siteLabel">Ce site</small></div><button class="x" id="close" type="button" aria-label="Fermer">×</button></header>
     <form class="gate" id="gate">
-      <p>Saisissez le jeton administrateur (<code>ADMIN_TOKEN</code>) pour afficher les visites.</p>
+      <p>Saisissez le jeton administrateur pour afficher les visites de ce site.</p>
       <input id="tok" type="password" placeholder="Jeton" autocomplete="off" aria-label="Jeton administrateur">
       <button class="pri" type="submit">Déverrouiller</button><div class="err" id="err" role="status"></div>
     </form>
@@ -156,11 +156,13 @@
     try {
       const r = await fetch(`${base}/api/admin/summary?${p}`, { headers: { "x-admin-token": token }, cache: "no-store" });
       if (r.status === 401 || r.status === 503) { store.set(""); $("err").textContent = "Jeton invalide ou serveur non configuré."; showGate(); return; }
-      if (!r.ok) throw 0;
+      if (!r.ok) { $("err").textContent = "Impossible de lire les visites."; showGate(); return; }
       st.data = await r.json();
+      $("err").textContent = "";
       $("gate").style.display = "none"; $("main").style.display = "flex";
+      if (st.data.site) $("siteLabel").textContent = st.data.site;
       render();
-    } catch { $("upd").textContent = "Serveur injoignable"; }
+    } catch { $("err").textContent = "Serveur injoignable."; showGate(); }
   }
   function showGate() { $("gate").style.display = "flex"; $("main").style.display = "none"; }
 
@@ -214,6 +216,7 @@
     if (location.hash !== "#visitors" && !store.get()) return;
     mounted = true;
     document.body.appendChild(host);
+    $("siteLabel").textContent = location.hostname.replace(/^www\./, "");
     $("fab").onclick = () => setOpen(!st.open);
     $("close").onclick = () => setOpen(false);
     root.addEventListener("keydown", (e) => { if (e.key === "Escape" && st.open) { setOpen(false); $("fab").focus(); } });

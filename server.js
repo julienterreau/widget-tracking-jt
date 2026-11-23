@@ -30,9 +30,23 @@ app.use(express.json({ limit: "12kb", type: ["application/json", "text/plain"] }
 app.use(express.static(path.join(__dirname, "public"), { extensions: ["html"] }));
 
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+function siteHost(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw.includes("://") ? raw : `http://${raw}`).hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+  } catch { return ""; }
+}
+function originAllowed(origin) {
+  if (!origin) return "";
+  if (!ALLOWED_ORIGINS.length || ALLOWED_ORIGINS.includes(origin)) return origin;
+  const host = siteHost(origin);
+  const ok = host && ALLOWED_ORIGINS.some((item) => siteHost(item) === host);
+  return ok ? origin : "";
+}
 app.use("/api", (req, res, next) => {
-  const origin = req.get("origin");
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+  const origin = originAllowed(req.get("origin"));
+  if (origin) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-admin-token");
@@ -72,7 +86,7 @@ function migrate(v) {
   const a = ua ? C.classifyAgent(ua) : { device: "Ordinateur", client: "Autre" };
   const out = { id: `visit-${crypto.randomUUID()}`, at: v.at, path: v.path || "/", countryCode: v.countryCode || "", country: v.country || "",
     city: v.city || "", lat: v.lat ?? null, lon: v.lon ?? null, device: a.device, client: a.client, source: "Accès direct",
-    utmSource: "", utmMedium: "", utmCampaign: "", visitorId: C.visitorHash(v.ip || v.id || "", ua, new Date(v.at)), durationSec: null };
+    utmSource: "", utmMedium: "", utmCampaign: "", visitorId: C.visitorHash(v.ip || v.id || "", ua, new Date(v.at)), durationSec: null, site: v.site || "" };
   if (STORE_IP && v.ip) out.ip = v.ip;
   return out;
 }
@@ -90,6 +104,24 @@ function rateLimit(max) {
   };
 }
 setInterval(() => { const now = Date.now(); for (const [k, b] of rateBuckets) if (!b.some((t) => now - t < 60_000)) rateBuckets.delete(k); }, 60_000).unref();
+
+// Site du visiteur : l'en-tête Origin du navigateur, pas un champ du corps (falsifiable).
+function visitSite(req) {
+  return siteHost(req.get("origin")) || siteHost(req.get("referer"));
+}
+// Sur un site autorisé, le tableau ne montre que ce site. Sur le serveur lui-même, tous les sites.
+function scopedSite(req) {
+  const host = visitSite(req);
+  const self = siteHost(req.hostname);
+  if (!host || host === self || host === "localhost" || host === "127.0.0.1") return "";
+  return host;
+}
+function rowsFor(req) {
+  const forced = scopedSite(req);
+  const site = forced || siteHost(req.query.site);
+  if (!site) return { site: "", list: rows };
+  return { site, list: rows.filter((v) => v.site === site) };
+}
 
 function requireAdmin(req, res, next) {
   if (!ADMIN_TOKEN) return res.status(503).json({ error: "Configurez ADMIN_TOKEN dans le fichier .env." });
@@ -153,7 +185,7 @@ async function recordVisit(req, res) {
     countryCode: place.countryCode || "", country: place.country || "", city: place.city || "", lat: place.lat, lon: place.lon,
     device: agent.device, client: agent.client, source: C.classifySource(referrer, utm.source),
     utmSource: utm.source, utmMedium: utm.medium, utmCampaign: utm.campaign,
-    visitorId: C.visitorHash(ip, ua), durationSec: null
+    visitorId: C.visitorHash(ip, ua), durationSec: null, site: visitSite(req)
   };
   if (STORE_IP && ip) row.ip = ip;
   rows.push(row); prune(); scheduleSave();
@@ -172,19 +204,24 @@ const guard = (fn) => (req, res) => fn(req, res).catch((e) => { console.error("V
 app.post(["/api/visites", "/api/visit"], rateLimit(30), guard(recordVisit));
 app.post("/api/visites/duree", rateLimit(60), guard(recordDuration));
 
-const onlineCount = () => new Set(rows.filter((v) => Date.parse(v.at) >= Date.now() - ONLINE_MS).map((v) => v.visitorId)).size;
+const onlineCount = (list) => new Set(list.filter((v) => Date.parse(v.at) >= Date.now() - ONLINE_MS).map((v) => v.visitorId)).size;
 const placeLabel = (v) => (v.city && v.country ? `${v.city}, ${v.country}` : "Lieu inconnu");
 // Même forme que LiveSnapshot du site : { online, visits: [{ id, at, place, device, source, page }] }.
-app.get("/api/visites/direct", (_req, res) => {
+app.get("/api/visites/direct", (req, res) => {
+  const { list } = rowsFor(req);
   res.setHeader("Cache-Control", "no-store");
-  res.json({ online: onlineCount(), visits: rows.slice(-10).reverse().map((v) => ({ id: v.id, at: v.at, place: placeLabel(v), device: v.device, source: v.source, page: C.pageName(v.path) })) });
+  res.json({ online: onlineCount(list), visits: list.slice(-10).reverse().map((v) => ({ id: v.id, at: v.at, place: placeLabel(v), device: v.device, source: v.source, page: C.pageName(v.path) })) });
 });
 
 /* ---------- API administrateur ---------- */
-app.get("/api/admin/stats", requireAdmin, (_req, res) => res.json({ online: onlineCount(), total: rows.length, visitors: rows.slice(-100).reverse() }));
-app.get("/api/admin/export", requireAdmin, (_req, res) => {
+app.get("/api/admin/stats", requireAdmin, (req, res) => {
+  const { site, list } = rowsFor(req);
+  res.json({ site, online: onlineCount(list), total: list.length, visitors: list.slice(-100).reverse() });
+});
+app.get("/api/admin/export", requireAdmin, (req, res) => {
+  const { list } = rowsFor(req);
   res.setHeader("Content-Disposition", "attachment; filename=visitor-export.json");
-  res.json(rows);
+  res.json(list);
 });
 
 // Même regroupement que mapPoints() du site : pays | ville | lat | lon, projeté sur le disque.
@@ -207,9 +244,15 @@ app.get("/api/admin/summary", requireAdmin, (req, res) => {
   const span = SPANS[req.query.range] ?? SPANS["24h"];
   const q = String(req.query.q || "").trim().toLowerCase().slice(0, 80);
   const country = String(req.query.country || ""), city = String(req.query.city || "");
-  const list = rows.filter((v) =>
+  const scoped = rowsFor(req);
+  const list = scoped.list.filter((v) =>
     (span === Infinity || Date.parse(v.at) >= Date.now() - span) && (!country || countryName(v.countryCode, v.country) === country) && (!city || v.city === city) &&
-    (!q || [v.ip, v.visitorId?.slice(0, 8), v.city, v.country, v.path, v.device, v.source].some((x) => String(x || "").toLowerCase().includes(q))));
+    (!q || [v.ip, v.visitorId?.slice(0, 8), v.city, v.country, v.path, v.device, v.source, v.site].some((x) => String(x || "").toLowerCase().includes(q))));
+  const sites = scopedSite(req) ? [] : [...rows.reduce((m, v) => {
+    if (!v.site) return m;
+    m.set(v.site, (m.get(v.site) || 0) + 1);
+    return m;
+  }, new Map())].sort((a, b) => b[1] - a[1]).map(([site, count]) => ({ site, count }));
   const group = (keyFn, extra, limit = 100) => {
     const m = new Map();
     for (const v of list) {
@@ -222,7 +265,8 @@ app.get("/api/admin/summary", requireAdmin, (req, res) => {
   };
   const named = (key) => (v) => v[key] || "Inconnu";
   res.json({
-    online: onlineCount(), total: rows.length, matched: list.length, storeIp: STORE_IP,
+    site: scoped.site, sites,
+    online: onlineCount(scoped.list), total: scoped.list.length, matched: list.length, storeIp: STORE_IP,
     countries: group((v) => v.countryCode || v.country || "?", (v) => ({ country: countryName(v.countryCode, v.country) || "Inconnu", countryCode: v.countryCode || "" })),
     cities: group((v) => `${v.city}|${v.countryCode}`, (v) => ({ city: v.city || "Ville inconnue", country: countryName(v.countryCode, v.country) })),
     visitors: group((v) => v.visitorId, (v) => ({ id: v.ip || `·${v.visitorId.slice(0, 6)}`, city: v.city || "Ville inconnue", country: countryName(v.countryCode, v.country), device: v.device })),
